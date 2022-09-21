@@ -31,10 +31,10 @@ def get_token(url: str, client_id: str, client_secret: str) -> str:
     return token['access_token'], token['expires_in']
 
 
-def get_all_products(url: str, access_token: str) -> list[dict]:
+def get_all_products(url: str, token: str) -> list[dict]:
     '''Get all products from moltin API.'''
     headers = {
-        'Authorization': f'Bearer {access_token}',
+        'Authorization': f'Bearer {token}',
         'Content-Type': 'application/json',
         'EP-Channel': 'web store'
     }
@@ -117,6 +117,7 @@ def get_cart_items(cart_id: str, access_token: str) -> dict:
 def handle_users_reply(
     update: telegram.update.Update,
     context: CallbackContext,
+    token: str,
     db: redis.Redis
 ) -> None:
     '''State-machine implementation.'''
@@ -134,13 +135,10 @@ def handle_users_reply(
         user_state = db.get(chat_id)
     
     states_functions = {
-        'START': start,
-        'ECHO': button
+        'START': partial(start, token=token),
+        'HANDLE_MENU': button
     }
     state_handler = states_functions[user_state]
-    # Если вы вдруг не заметите, что python-telegram-bot перехватывает ошибки.
-    # Оставляю этот try...except, чтобы код не падал молча.
-    # Этот фрагмент можно переписать.
     try:
         next_state = state_handler(update, context)
         db.set(chat_id, next_state)
@@ -150,18 +148,28 @@ def handle_users_reply(
 
 def start(
     update: telegram.update.Update,
-    context: CallbackContext
+    context: CallbackContext,
+    token: str
 ) -> str:
     '''Send a message when the command /start is issued.'''
-    keyboard = [[InlineKeyboardButton("Option 1", callback_data='1'),
-                 InlineKeyboardButton("Option 2", callback_data='2')],
-
-                [InlineKeyboardButton("Option 3", callback_data='3')]]
-
+    products = get_all_products(
+        url='https://api.moltin.com/pcm/products/',
+        token=token
+    )
+    keyboard = list()
+    for product in products:
+        product_name = product['attributes']['name']
+        print(product_name)
+        keyboard.append(
+            [InlineKeyboardButton(
+                product_name,
+                callback_data=product['id']
+            )]
+        )
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     update.message.reply_text('Please choose:', reply_markup=reply_markup)
-    return 'ECHO'
+    return 'HANDLE_MENU'
 
 
 def button(update, context):
@@ -186,7 +194,7 @@ def main() -> None:
     db_port = os.getenv('DB_PORT', default=6379)
     db_password = os.getenv('DB_PASSWORD', default=None)
     token_url = 'https://api.moltin.com/oauth/access_token'
-    products_url = 'https://api.moltin.com/pcm/products/'
+    # products_url = 'https://api.moltin.com/pcm/products/'
     carts_url = 'https://api.moltin.com/v2/carts/'
     chat_id = '123456789'
 
@@ -197,57 +205,58 @@ def main() -> None:
         decode_responses=True
     )
 
-    updater = Updater(tg_token)
-    dispatcher = updater.dispatcher
-    dispatcher.add_handler(
-        CallbackQueryHandler(
-            partial(handle_users_reply, db=redis_db)
-        )
-    )
-    dispatcher.add_handler(
-        MessageHandler(
-            Filters.text,
-            partial(handle_users_reply, db=redis_db)
-        )
-    )
-    dispatcher.add_handler(
-        CommandHandler(
-            'start',
-            partial(handle_users_reply, db=redis_db)
-        )
-    )
-    updater.start_polling()
-
     access_token, expiration_time = get_token(
         url=token_url,
         client_id=client_id,
         client_secret=client_secret
     )
+
+    updater = Updater(tg_token)
+    dispatcher = updater.dispatcher
+    dispatcher.add_handler(
+        CallbackQueryHandler(
+            partial(handle_users_reply, db=redis_db, token=access_token)
+        )
+    )
+    dispatcher.add_handler(
+        MessageHandler(
+            Filters.text,
+            partial(handle_users_reply, db=redis_db, token=access_token)
+        )
+    )
+    dispatcher.add_handler(
+        CommandHandler(
+            'start',
+            partial(handle_users_reply, db=redis_db, token=access_token)
+        )
+    )
+    updater.start_polling()
+
     # pprint(f'token: {access_token}')
 
-    products = get_all_products(
-        url=products_url,
-        access_token=access_token
-    )
+    # products = get_all_products(
+    #     url=products_url,
+    #     access_token=access_token
+    # )
     # pprint(products)
-    product_id = products[1]['id']
+    # product_id = products[1]['id']
 
-    cart = create_cart(
-        url=carts_url + chat_id,
-        access_token=access_token
-    )
+    # cart = create_cart(
+    #     url=carts_url + chat_id,
+    #     access_token=access_token
+    # )
     # pprint(cart)
-    cart = add_product_to_cart(
-        access_token=access_token,
-        cart_id=chat_id,
-        product_id=product_id
-    )
+    # cart = add_product_to_cart(
+    #     access_token=access_token,
+    #     cart_id=chat_id,
+    #     product_id=product_id
+    # )
     # pprint(cart)
-    cart_items = get_cart_items(
-        cart_id=chat_id,
-        access_token=access_token
-    )
-    pprint(cart_items)
+    # cart_items = get_cart_items(
+    #     cart_id=chat_id,
+    #     access_token=access_token
+    # )
+    # pprint(cart_items)
 
 
 if __name__ == '__main__':
