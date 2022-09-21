@@ -1,11 +1,16 @@
+import logging
 import os
 from pprint import pprint
 
+import redis
 import requests
 import telegram
 from dotenv import load_dotenv
+from functools import partial
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
-    ConversationHandler,
+    CallbackContext,
+    CallbackQueryHandler,
     CommandHandler,
     Filters,
     MessageHandler,
@@ -109,16 +114,109 @@ def get_cart_items(cart_id: str, access_token: str) -> dict:
     return response.json()
 
 
+def handle_users_reply(
+    update: telegram.update.Update,
+    context: CallbackContext,
+    db: redis.Redis
+) -> None:
+    '''State-machine implementation.'''
+    if update.message:
+        user_reply = update.message.text
+        chat_id = update.message.chat_id
+    elif update.callback_query:
+        user_reply = update.callback_query.data
+        chat_id = update.callback_query.message.chat_id
+    else:
+        return
+    if user_reply == '/start':
+        user_state = 'START'
+    else:
+        user_state = db.get(chat_id)
+    
+    states_functions = {
+        'START': start,
+        'ECHO': button
+    }
+    state_handler = states_functions[user_state]
+    # Если вы вдруг не заметите, что python-telegram-bot перехватывает ошибки.
+    # Оставляю этот try...except, чтобы код не падал молча.
+    # Этот фрагмент можно переписать.
+    try:
+        next_state = state_handler(update, context)
+        db.set(chat_id, next_state)
+    except Exception as err:
+        print(err)
+
+
+def start(
+    update: telegram.update.Update,
+    context: CallbackContext
+) -> str:
+    '''Send a message when the command /start is issued.'''
+    keyboard = [[InlineKeyboardButton("Option 1", callback_data='1'),
+                 InlineKeyboardButton("Option 2", callback_data='2')],
+
+                [InlineKeyboardButton("Option 3", callback_data='3')]]
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    update.message.reply_text('Please choose:', reply_markup=reply_markup)
+    return 'ECHO'
+
+
+def button(update, context):
+    query = update.callback_query
+
+    context.bot.edit_message_text(
+        text=f'Selected option: {query.data}',
+        chat_id=query.message.chat_id,
+        message_id=query.message.message_id
+    )
+
+
 def main() -> None:
+    '''Start the Telegram-bot.'''
     load_dotenv()
     url = os.getenv('MOLTIN_API_URL')
     store_id = os.getenv('STORE_ID')
     client_id = os.getenv('CLIENT_ID')
     client_secret = os.getenv('CLIENT_SECRET')
+    tg_token = os.getenv('TG_TOKEN')
+    db_host = os.getenv('DB_HOST', default='localhost')
+    db_port = os.getenv('DB_PORT', default=6379)
+    db_password = os.getenv('DB_PASSWORD', default=None)
     token_url = 'https://api.moltin.com/oauth/access_token'
     products_url = 'https://api.moltin.com/pcm/products/'
     carts_url = 'https://api.moltin.com/v2/carts/'
     chat_id = '123456789'
+
+    redis_db = redis.Redis(
+        host=db_host,
+        port=db_port,
+        password=db_password,
+        decode_responses=True
+    )
+
+    updater = Updater(tg_token)
+    dispatcher = updater.dispatcher
+    dispatcher.add_handler(
+        CallbackQueryHandler(
+            partial(handle_users_reply, db=redis_db)
+        )
+    )
+    dispatcher.add_handler(
+        MessageHandler(
+            Filters.text,
+            partial(handle_users_reply, db=redis_db)
+        )
+    )
+    dispatcher.add_handler(
+        CommandHandler(
+            'start',
+            partial(handle_users_reply, db=redis_db)
+        )
+    )
+    updater.start_polling()
 
     access_token, expiration_time = get_token(
         url=token_url,
