@@ -46,15 +46,15 @@ def get_all_products(url: str, token: str) -> list[dict]:
     return response.json()['data']
 
 
-def get_product(url: str, access_token: str) -> list[dict]:
+def get_product(product_id: str, token: str) -> list[dict]:
     '''Get certain product from moltin API.'''
     headers = {
-        'Authorization': f'Bearer {access_token}',
+        'Authorization': f'Bearer {token}',
         'Content-Type': 'application/json',
         'EP-Channel': 'web store'
     }
     response = requests.get(
-        url=url,
+        url=f'https://api.moltin.com/catalog/products/{product_id}',
         headers=headers
     )
     response.raise_for_status()
@@ -136,7 +136,7 @@ def handle_users_reply(
     
     states_functions = {
         'START': partial(start, token=token),
-        'HANDLE_MENU': button
+        'HANDLE_MENU': partial(button, token=token),
     }
     state_handler = states_functions[user_state]
     try:
@@ -144,6 +144,17 @@ def handle_users_reply(
         db.set(chat_id, next_state)
     except Exception as err:
         print(err)
+
+
+def get_product_stock(product_id: str, token: str) -> dict:
+    '''Get product's stock information.'''
+    headers = {
+        'Authorization': f'Bearer {token}',
+    }
+    url = f'https://api.moltin.com/v2/inventories/{product_id}'
+    response = requests.get(url=url, headers=headers)
+    response.raise_for_status()
+    return response.json()['data']
 
 
 def start(
@@ -159,7 +170,6 @@ def start(
     keyboard = list()
     for product in products:
         product_name = product['attributes']['name']
-        print(product_name)
         keyboard.append(
             [InlineKeyboardButton(
                 product_name,
@@ -172,14 +182,28 @@ def start(
     return 'HANDLE_MENU'
 
 
-def button(update, context):
+def button(
+    update: telegram.update.Update,
+    context: CallbackContext,
+    token: str
+) -> str:
     query = update.callback_query
-
+    product_id = query.data
+    product = get_product(product_id=product_id, token=token)
+    pprint(product)
+    stock = get_product_stock(product_id=product_id, token=token)
+    reply_text = (
+        f'{product["attributes"]["name"]}\n\n'
+        f'{product["meta"]["display_price"]["without_tax"]["formatted"]} per kg'
+        f'\n{stock["available"]} on stock'
+        f'\n{product["attributes"]["description"]}'
+    )
     context.bot.edit_message_text(
-        text=f'Selected option: {query.data}',
+        text=reply_text,
         chat_id=query.message.chat_id,
         message_id=query.message.message_id
     )
+    return 'START'
 
 
 def main() -> None:
