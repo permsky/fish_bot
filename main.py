@@ -163,8 +163,13 @@ def handle_users_reply(
         user_state = db.get(chat_id)
     
     states_functions = {
-        'START': partial(start, token=token),
-        'HANDLE_MENU': partial(button, token=token),
+        'START': partial(start, token=token, chat_id=chat_id),
+        'HANDLE_MENU': partial(button, token=token, chat_id=chat_id),
+        'HANDLE_DESCRIPTION': partial(
+            back_to_menu,
+            token=token,
+            chat_id=chat_id
+        ),
     }
     state_handler = states_functions[user_state]
     try:
@@ -188,7 +193,8 @@ def get_product_stock(product_id: str, token: str) -> dict:
 def start(
     update: telegram.update.Update,
     context: CallbackContext,
-    token: str
+    token: str,
+    chat_id: str
 ) -> str:
     '''Send a message when the command /start is issued.'''
     products = get_all_products(
@@ -205,15 +211,18 @@ def start(
             )]
         )
     reply_markup = InlineKeyboardMarkup(keyboard)
-
-    update.message.reply_text('Please choose:', reply_markup=reply_markup)
+    context.bot.send_message(
+        text='Please choose:',
+        chat_id=chat_id,
+        reply_markup=reply_markup)
     return 'HANDLE_MENU'
 
 
 def button(
     update: telegram.update.Update,
     context: CallbackContext,
-    token: str
+    token: str,
+    chat_id: str
 ) -> str:
     query = update.callback_query
     product_id = query.data
@@ -231,16 +240,41 @@ def button(
         f'\n{product["attributes"]["description"]}'
     )
     context.bot.delete_message(
-        chat_id=query.message.chat_id,
+        chat_id=chat_id,
         message_id=query.message.message_id
     )
     with open(main_image_filepath, 'rb') as image_file:
-        context.bot.send_photo(
-            chat_id=query.message.chat_id,
-            photo=image_file,
-            caption=reply_text
+        reply_markup = InlineKeyboardMarkup(
+            [[
+                InlineKeyboardButton(
+                    'Назад',
+                    callback_data='back'
+                )
+            ]]
         )
-    return 'START'
+        context.bot.send_photo(
+            chat_id=chat_id,
+            photo=image_file,
+            caption=reply_text,
+            reply_markup=reply_markup
+        )
+    return 'HANDLE_DESCRIPTION'
+
+
+def back_to_menu(
+    update: telegram.update.Update,
+    context: CallbackContext,
+    token: str,
+    chat_id: str
+) -> None:
+    '''Return to products menu.'''
+    if update.callback_query.data == 'back':
+        return start(
+            update=update,
+            context=context,
+            token=token,
+            chat_id=chat_id
+        )
 
 
 def main() -> None:
