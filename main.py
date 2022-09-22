@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path
 from pprint import pprint
 
 import redis
@@ -59,6 +60,33 @@ def get_product(product_id: str, token: str) -> list[dict]:
     )
     response.raise_for_status()
     return response.json()['data']
+
+
+def download_product_main_image(product_id: str, token: str) -> str:
+    '''Download product main image.'''
+    headers = {'Authorization': f'Bearer {token}'}
+    response = requests.get(
+        url= (
+            f'https://api.moltin.com/pcm/products/{product_id}'
+            f'/relationships/main_image'
+        ),
+        headers=headers
+    )
+    response.raise_for_status()
+    image_id = response.json()['data']['id']
+    response = requests.get(
+        url=f'https://api.moltin.com/v2/files/{image_id}',
+        headers=headers
+    )
+    response.raise_for_status()
+    main_image = response.json()['data']
+    filepath = Path('images', main_image['file_name'])
+    if not filepath.exists():
+        response = requests.get(main_image['link']['href'])
+        response.raise_for_status()
+        with open(filepath, 'wb') as image_file:
+            image_file.write(response.content)
+    return filepath
 
 
 def create_cart(url: str, access_token: str) -> str:
@@ -190,19 +218,28 @@ def button(
     query = update.callback_query
     product_id = query.data
     product = get_product(product_id=product_id, token=token)
-    pprint(product)
+    # pprint(product)
+    main_image_filepath = download_product_main_image(
+        product_id=product_id,
+        token=token
+    )
     stock = get_product_stock(product_id=product_id, token=token)
     reply_text = (
         f'{product["attributes"]["name"]}\n\n'
         f'{product["meta"]["display_price"]["without_tax"]["formatted"]} per kg'
-        f'\n{stock["available"]} on stock'
+        f'\n{stock["available"]} kg on stock'
         f'\n{product["attributes"]["description"]}'
     )
-    context.bot.edit_message_text(
-        text=reply_text,
+    context.bot.delete_message(
         chat_id=query.message.chat_id,
         message_id=query.message.message_id
     )
+    with open(main_image_filepath, 'rb') as image_file:
+        context.bot.send_photo(
+            chat_id=query.message.chat_id,
+            photo=image_file,
+            caption=reply_text
+        )
     return 'START'
 
 
