@@ -227,7 +227,6 @@ def button(
     product_id = context.user_data['product_id'] = query.data
     chat_id = context.user_data.get('chat_id')
     product = get_product(product_id=product_id, token=token)
-    # pprint(product)
     main_image_filepath = download_product_main_image(
         product_id=product_id,
         token=token
@@ -299,8 +298,6 @@ def main() -> None:
     db_port = os.getenv('DB_PORT', default=6379)
     db_password = os.getenv('DB_PASSWORD', default=None)
     token_url = 'https://api.moltin.com/oauth/access_token'
-    # products_url = 'https://api.moltin.com/pcm/products/'
-    carts_url = 'https://api.moltin.com/v2/carts/'
 
     redis_db = redis.Redis(
         host=db_host,
@@ -335,32 +332,6 @@ def main() -> None:
         )
     )
     updater.start_polling()
-
-    # pprint(f'token: {access_token}')
-
-    # products = get_all_products(
-    #     url=products_url,
-    #     access_token=access_token
-    # )
-    # pprint(products)
-    # product_id = products[1]['id']
-
-    # cart = create_cart(
-    #     url=carts_url + chat_id,
-    #     access_token=access_token
-    # )
-    # pprint(cart)
-    # cart = add_product_to_cart(
-    #     access_token=access_token,
-    #     cart_id=chat_id,
-    #     product_id=product_id
-    # )
-    # pprint(cart)
-    # cart_items = get_cart_items(
-    #     cart_id=chat_id,
-    #     access_token=access_token
-    # )
-    # pprint(cart_items)
 
 
 if __name__ == '__main__':
