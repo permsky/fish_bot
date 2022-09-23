@@ -1,3 +1,4 @@
+from curses.ascii import isdigit
 import logging
 import os
 from pathlib import Path
@@ -89,27 +90,30 @@ def download_product_main_image(product_id: str, token: str) -> str:
     return filepath
 
 
-def create_cart(url: str, access_token: str) -> str:
+def create_cart(
+    update: telegram.update.Update,
+    context: CallbackContext,
+    token: str
+) -> str:
     '''Create cart.'''
-    headers = {
-        'Authorization': f'Bearer {access_token}',
-    }
+    chat_id = context.user_data.get('chat_id')
     response = requests.get(
-        url=url,
-        headers=headers
+        url=f'https://api.moltin.com/v2/carts/{chat_id}',
+        headers={'Authorization': f'Bearer {token}'}
     )
     response.raise_for_status()
     return response.json()
 
 
 def add_product_to_cart(
-    access_token: str,
+    token: str,
     cart_id: str,
-    product_id: str
-) -> None:
+    product_id: str,
+    quantity: str
+) -> dict:
     '''Add product to cart.'''
     headers = {
-        'Authorization': f'Bearer {access_token}',
+        'Authorization': f'Bearer {token}',
         'Content-Type': 'application/json',
     }
     url = f'https://api.moltin.com/v2/carts/{cart_id}/items'
@@ -117,7 +121,7 @@ def add_product_to_cart(
         "data": {
             "id": product_id,
             "type": "cart_item",
-            "quantity": 1,
+            "quantity": int(quantity),
         }
     }
     response = requests.post(
@@ -151,10 +155,11 @@ def handle_users_reply(
     '''State-machine implementation.'''
     if update.message:
         user_reply = update.message.text
-        chat_id = update.message.chat_id
+        chat_id = context.user_data['chat_id'] = update.message.chat_id
     elif update.callback_query:
         user_reply = update.callback_query.data
         chat_id = update.callback_query.message.chat_id
+        context.user_data['chat_id'] = chat_id
     else:
         return
     if user_reply == '/start':
@@ -163,13 +168,9 @@ def handle_users_reply(
         user_state = db.get(chat_id)
     
     states_functions = {
-        'START': partial(start, token=token, chat_id=chat_id),
-        'HANDLE_MENU': partial(button, token=token, chat_id=chat_id),
-        'HANDLE_DESCRIPTION': partial(
-            back_to_menu,
-            token=token,
-            chat_id=chat_id
-        ),
+        'START': partial(start, token=token),
+        'HANDLE_MENU': partial(button, token=token),
+        'HANDLE_DESCRIPTION': partial(handle_description, token=token),
     }
     state_handler = states_functions[user_state]
     try:
@@ -194,7 +195,6 @@ def start(
     update: telegram.update.Update,
     context: CallbackContext,
     token: str,
-    chat_id: str
 ) -> str:
     '''Send a message when the command /start is issued.'''
     products = get_all_products(
@@ -213,7 +213,7 @@ def start(
     reply_markup = InlineKeyboardMarkup(keyboard)
     context.bot.send_message(
         text='Please choose:',
-        chat_id=chat_id,
+        chat_id=context.user_data.get('chat_id'),
         reply_markup=reply_markup)
     return 'HANDLE_MENU'
 
@@ -221,11 +221,11 @@ def start(
 def button(
     update: telegram.update.Update,
     context: CallbackContext,
-    token: str,
-    chat_id: str
+    token: str
 ) -> str:
     query = update.callback_query
-    product_id = query.data
+    product_id = context.user_data['product_id'] = query.data
+    chat_id = context.user_data.get('chat_id')
     product = get_product(product_id=product_id, token=token)
     # pprint(product)
     main_image_filepath = download_product_main_image(
@@ -245,12 +245,14 @@ def button(
     )
     with open(main_image_filepath, 'rb') as image_file:
         reply_markup = InlineKeyboardMarkup(
-            [[
-                InlineKeyboardButton(
-                    'Назад',
-                    callback_data='back'
-                )
-            ]]
+            [
+                [
+                    InlineKeyboardButton('1 kg',callback_data=1),
+                    InlineKeyboardButton('5 kg',callback_data=5),
+                    InlineKeyboardButton('10 kg',callback_data=10)
+                ], 
+                [InlineKeyboardButton('Назад',callback_data='back')]
+            ]
         )
         context.bot.send_photo(
             chat_id=chat_id,
@@ -261,20 +263,28 @@ def button(
     return 'HANDLE_DESCRIPTION'
 
 
-def back_to_menu(
+def handle_description(
     update: telegram.update.Update,
     context: CallbackContext,
-    token: str,
-    chat_id: str
+    token: str
 ) -> None:
     '''Return to products menu.'''
-    if update.callback_query.data == 'back':
-        return start(
-            update=update,
-            context=context,
+    query_data = update.callback_query.data
+    chat_id=context.user_data.get('chat_id')
+    if query_data == 'back':
+        return start(update=update, context=context, token=token)
+    elif query_data.isdigit():
+        if not context.user_data.get('cart_id'):
+            create_cart(update=update, context=context, token=token)
+            context.user_data['cart_id'] = chat_id
+        cart = add_product_to_cart(
             token=token,
-            chat_id=chat_id
+            cart_id=chat_id,
+            product_id=context.user_data.get('product_id'),
+            quantity=query_data
         )
+        pprint(cart)
+        return 'HANDLE_DESCRIPTION'
 
 
 def main() -> None:
@@ -291,7 +301,6 @@ def main() -> None:
     token_url = 'https://api.moltin.com/oauth/access_token'
     # products_url = 'https://api.moltin.com/pcm/products/'
     carts_url = 'https://api.moltin.com/v2/carts/'
-    chat_id = '123456789'
 
     redis_db = redis.Redis(
         host=db_host,
