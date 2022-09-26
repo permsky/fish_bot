@@ -1,4 +1,3 @@
-from curses.ascii import isdigit
 import logging
 import os
 from pathlib import Path
@@ -129,19 +128,16 @@ def add_product_to_cart(
         headers=headers,
         json=payload
     )
-    if response.status_code == 400:
-        return response.json()
     response.raise_for_status()
     return response.json()
 
 
-def get_cart_items(cart_id: str, access_token: str) -> dict:
+def get_cart_items(cart_id: str, token: str) -> dict:
     '''Get cart items.'''
-    headers = {
-        'Authorization': f'Bearer {access_token}',
-    }
-    url = f'https://api.moltin.com/v2/carts/{cart_id}/items'
-    response = requests.get(url=url, headers=headers)
+    response = requests.get(
+        url=f'https://api.moltin.com/v2/carts/{cart_id}/items',
+        headers={'Authorization': f'Bearer {token}'}
+    )
     response.raise_for_status()
     return response.json()
 
@@ -169,8 +165,9 @@ def handle_users_reply(
     
     states_functions = {
         'START': partial(start, token=token),
-        'HANDLE_MENU': partial(button, token=token),
+        'HANDLE_MENU': partial(handle_menu, token=token),
         'HANDLE_DESCRIPTION': partial(handle_description, token=token),
+        'HANDLE_CART': partial(handle_cart, token=token),
     }
     state_handler = states_functions[user_state]
     try:
@@ -182,13 +179,22 @@ def handle_users_reply(
 
 def get_product_stock(product_id: str, token: str) -> dict:
     '''Get product's stock information.'''
-    headers = {
-        'Authorization': f'Bearer {token}',
-    }
-    url = f'https://api.moltin.com/v2/inventories/{product_id}'
-    response = requests.get(url=url, headers=headers)
+    response = requests.get(
+        url=f'https://api.moltin.com/v2/inventories/{product_id}',
+        headers={'Authorization': f'Bearer {token}'}
+    )
     response.raise_for_status()
     return response.json()['data']
+
+
+def delete_cart_item(cart_id: str, product_id: str, token: str) -> dict:
+    '''Delete certain cart item.'''
+    response = requests.delete(
+        url=f'https://api.moltin.com/v2/carts/{cart_id}/items/{product_id}',
+        headers={'Authorization': f'Bearer {token}'}
+    )
+    response.raise_for_status()
+    return response.json()
 
 
 def start(
@@ -201,31 +207,39 @@ def start(
         url='https://api.moltin.com/pcm/products/',
         token=token
     )
+    # context.user_data['cart_id'] = None
     keyboard = list()
     for product in products:
         product_name = product['attributes']['name']
         keyboard.append(
-            [InlineKeyboardButton(
-                product_name,
-                callback_data=product['id']
-            )]
+            [InlineKeyboardButton(product_name, callback_data=product['id'])]
         )
+    keyboard.append([InlineKeyboardButton('Корзина',callback_data='cart')])
     reply_markup = InlineKeyboardMarkup(keyboard)
     context.bot.send_message(
         text='Please choose:',
         chat_id=context.user_data.get('chat_id'),
         reply_markup=reply_markup)
+    print('HANDLE_MENU')
     return 'HANDLE_MENU'
 
 
-def button(
+def handle_menu(
     update: telegram.update.Update,
     context: CallbackContext,
     token: str
 ) -> str:
     query = update.callback_query
-    product_id = context.user_data['product_id'] = query.data
     chat_id = context.user_data.get('chat_id')
+    if query.data == 'cart':
+        cart_items = get_cart_items(cart_id=chat_id, token=token)
+        return send_cart_content(
+            context=context,
+            token=token,
+            chat_id=chat_id,
+            cart_items=cart_items
+        )
+    product_id = context.user_data['product_id'] = query.data
     product = get_product(product_id=product_id, token=token)
     main_image_filepath = download_product_main_image(
         product_id=product_id,
@@ -249,7 +263,8 @@ def button(
                     InlineKeyboardButton('1 kg',callback_data=1),
                     InlineKeyboardButton('5 kg',callback_data=5),
                     InlineKeyboardButton('10 kg',callback_data=10)
-                ], 
+                ],
+                [InlineKeyboardButton('Корзина',callback_data='cart')],
                 [InlineKeyboardButton('Назад',callback_data='back')]
             ]
         )
@@ -259,6 +274,7 @@ def button(
             caption=reply_text,
             reply_markup=reply_markup
         )
+    print('HANDLE_DESCRIPTION')
     return 'HANDLE_DESCRIPTION'
 
 
@@ -276,14 +292,101 @@ def handle_description(
         if not context.user_data.get('cart_id'):
             create_cart(update=update, context=context, token=token)
             context.user_data['cart_id'] = chat_id
+            # print(f'cart id: {context.user_data["cart_id"]}')
         cart = add_product_to_cart(
             token=token,
             cart_id=chat_id,
             product_id=context.user_data.get('product_id'),
             quantity=query_data
         )
-        pprint(cart)
+        # pprint(cart)
+        print('HANDLE_DESCRIPTION')
         return 'HANDLE_DESCRIPTION'
+    elif query_data == 'cart':
+        cart_items = get_cart_items(cart_id=chat_id, token=token)
+        return send_cart_content(
+            context=context,
+            token=token,
+            chat_id=chat_id,
+            cart_items=cart_items
+        )
+
+
+def handle_cart(
+    update: telegram.update.Update,
+    context: CallbackContext,
+    token: str
+) -> None:
+    '''Return to products menu.'''
+    query_data = update.callback_query.data
+    chat_id=context.user_data.get('chat_id')
+    if query_data == 'back':
+        start(update=update, context=context, token=token)
+        print('HANDLE_MENU')
+        return 'HANDLE_MENU'
+    else:
+        cart = delete_cart_item(
+            cart_id=chat_id,
+            product_id=query_data,
+            token=token
+        )
+        if not cart['data']:
+            context.user_data['cart_id'] = None
+        return send_cart_content(
+            context=context,
+            token=token,
+            chat_id=chat_id,
+            cart_items=cart
+        )
+
+
+def send_cart_content(
+    context: CallbackContext,
+    token: str,
+    chat_id: str,
+    cart_items: dict
+) -> str:
+    '''Send cart content to telegram.'''
+    if not context.user_data.get('cart_id'):
+        reply_markup = InlineKeyboardMarkup(
+            [[InlineKeyboardButton('В меню', callback_data='back')]]
+        )
+        context.bot.send_message(
+            text='Корзина пуста',
+            chat_id=chat_id,
+            reply_markup=reply_markup
+        )
+        print('HANDLE_CART')
+        return 'HANDLE_CART'
+    cart_item_texts = list()
+    keyboard = list()
+    for cart_item in cart_items['data']:
+        text = (
+            f'\n{cart_item["name"]}\n{cart_item["description"]}'
+            f'\n{cart_item["meta"]["display_price"]["without_tax"]["unit"]["formatted"]} per kg'
+            f'\n{cart_item["quantity"]}kg in cart for {cart_item["meta"]["display_price"]["without_tax"]["value"]["formatted"]}'
+        )
+        cart_item_texts.append(text)
+        keyboard.append(
+            [InlineKeyboardButton(
+                f'Убрать из корзины {cart_item["name"]}',
+                callback_data=cart_item['id']
+            )]
+        )
+    keyboard.append(
+        [InlineKeyboardButton('В меню', callback_data='back')]
+    )
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    total_cost = f'\n\nTotal: {cart_items["meta"]["display_price"]["without_tax"]["formatted"]}'
+    cart_item_texts.append(total_cost)
+    text = '\n'.join(cart_item_texts)
+    context.bot.send_message(
+        text=text,
+        chat_id=chat_id,
+        reply_markup=reply_markup
+    )
+    print('HANDLE_CART')
+    return 'HANDLE_CART'
 
 
 def main() -> None:
