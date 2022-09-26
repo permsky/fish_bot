@@ -168,6 +168,7 @@ def handle_users_reply(
         'HANDLE_MENU': partial(handle_menu, token=token),
         'HANDLE_DESCRIPTION': partial(handle_description, token=token),
         'HANDLE_CART': partial(handle_cart, token=token),
+        'WAITING_EMAIL': partial(handle_email, token=token)
     }
     state_handler = states_functions[user_state]
     try:
@@ -282,7 +283,7 @@ def handle_description(
     update: telegram.update.Update,
     context: CallbackContext,
     token: str
-) -> None:
+) -> str:
     '''Return to products menu.'''
     query_data = update.callback_query.data
     chat_id=context.user_data.get('chat_id')
@@ -316,7 +317,7 @@ def handle_cart(
     update: telegram.update.Update,
     context: CallbackContext,
     token: str
-) -> None:
+) -> str:
     '''Return to products menu.'''
     query_data = update.callback_query.data
     chat_id=context.user_data.get('chat_id')
@@ -324,6 +325,13 @@ def handle_cart(
         start(update=update, context=context, token=token)
         print('HANDLE_MENU')
         return 'HANDLE_MENU'
+    elif query_data == 'pay':
+        context.bot.send_message(
+            text='Введите ваш e-mail',
+            chat_id=chat_id
+        )
+        print('WAITING_EMAIL')
+        return 'WAITING_EMAIL'
     else:
         cart = delete_cart_item(
             cart_id=chat_id,
@@ -374,6 +382,9 @@ def send_cart_content(
             )]
         )
     keyboard.append(
+        [InlineKeyboardButton('Оплатить', callback_data='pay')]
+    )
+    keyboard.append(
         [InlineKeyboardButton('В меню', callback_data='back')]
     )
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -387,6 +398,21 @@ def send_cart_content(
     )
     print('HANDLE_CART')
     return 'HANDLE_CART'
+
+
+def handle_email(
+    update: telegram.update.Update,
+    context: CallbackContext,
+    token: str
+) -> str:
+    '''Handle user e-mail.'''
+    context.bot.send_message(
+        text=f'Вы указали следующий e-mail: {update.message.text}',
+        chat_id=update.message.chat_id,
+        # reply_markup=reply_markup
+    )
+    print('END')
+    return 'END'
 
 
 def main() -> None:
