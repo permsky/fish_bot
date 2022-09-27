@@ -210,13 +210,24 @@ def create_customer(
             'type': 'customer',
             'name': name,
             'email': email,
-            'password': str(password)
+            'password': password
         }
     }
     response = requests.post(
         url=f'https://api.moltin.com/v2/customers',
         headers={'Authorization': f'Bearer {token}'},
         json=customer_creds
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def update_customer(token: str, customer_id: str, email: str) -> dict:
+    '''Get customer by id.'''
+    response = requests.put(
+        url=f'https://api.moltin.com/v2/customers/{customer_id}',
+        headers={'Authorization': f'Bearer {token}'},
+        json={'data': {'type': 'customer', 'email': email}}
     )
     response.raise_for_status()
     return response.json()
@@ -436,14 +447,26 @@ def handle_email(
         f'{update.message.chat.last_name} {update.message.chat.first_name}'
         f' ({chat_id})'
     )
-    customer = create_customer(
+    customer_id = context.user_data.get('customer_id')
+    if not customer_id:
+        customer = create_customer(
+            token=token,
+            name=name,
+            email=email,
+            password=str(chat_id)
+        )
+        context.user_data['customer_id'] = customer['data']['id']
+        context.bot.send_message(
+            text=f'Вы указали следующий e-mail: {email}',
+            chat_id=chat_id,
+        )
+        print('START')
+        return 'START'
+    customer = update_customer(
         token=token,
-        name=name,
-        email=email,
-        password=chat_id
+        customer_id=customer_id,
+        email=email
     )
-    print('customer:')
-    pprint(customer)
     context.bot.send_message(
         text=f'Вы указали следующий e-mail: {email}',
         chat_id=chat_id,
