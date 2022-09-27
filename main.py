@@ -198,6 +198,30 @@ def delete_cart_item(cart_id: str, product_id: str, token: str) -> dict:
     return response.json()
 
 
+def create_customer(
+    token: str,
+    name: str,
+    email: str,
+    password: str
+) -> dict:
+    '''Create moltin customer.'''
+    customer_creds = {
+        'data': {
+            'type': 'customer',
+            'name': name,
+            'email': email,
+            'password': str(password)
+        }
+    }
+    response = requests.post(
+        url=f'https://api.moltin.com/v2/customers',
+        headers={'Authorization': f'Bearer {token}'},
+        json=customer_creds
+    )
+    response.raise_for_status()
+    return response.json()
+
+
 def start(
     update: telegram.update.Update,
     context: CallbackContext,
@@ -406,13 +430,27 @@ def handle_email(
     token: str
 ) -> str:
     '''Handle user e-mail.'''
+    email = update.message.text
+    chat_id = update.message.chat_id
+    name = (
+        f'{update.message.chat.last_name} {update.message.chat.first_name}'
+        f' ({chat_id})'
+    )
+    customer = create_customer(
+        token=token,
+        name=name,
+        email=email,
+        password=chat_id
+    )
+    print('customer:')
+    pprint(customer)
     context.bot.send_message(
-        text=f'Вы указали следующий e-mail: {update.message.text}',
-        chat_id=update.message.chat_id,
+        text=f'Вы указали следующий e-mail: {email}',
+        chat_id=chat_id,
         # reply_markup=reply_markup
     )
-    print('END')
-    return 'END'
+    print('START')
+    return 'START'
 
 
 def main() -> None:
