@@ -19,6 +19,9 @@ from telegram.ext import (
 )
 
 
+logger = logging.getLogger(__name__)
+
+
 def get_token(url: str, client_id: str, client_secret: str) -> str:
     '''Get authorization token.'''
     payload = {
@@ -525,4 +528,9 @@ def main() -> None:
 
 
 if __name__ == '__main__':
+    logging.basicConfig(
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        level=logging.INFO
+    )
+
     main()
