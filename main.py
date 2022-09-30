@@ -2,7 +2,6 @@ import logging
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
-from pprint import pprint
 
 import redis
 import requests
@@ -256,7 +255,6 @@ def start(update: telegram.update.Update, context: CallbackContext) -> str:
         url='https://api.moltin.com/pcm/products/',
         token=context.bot_data.get('moltin_token')
     )
-    # context.user_data['cart_id'] = None
     keyboard = list()
     for product in products:
         product_name = product['attributes']['name']
@@ -269,7 +267,6 @@ def start(update: telegram.update.Update, context: CallbackContext) -> str:
         text='Please choose:',
         chat_id=context.user_data.get('chat_id'),
         reply_markup=reply_markup)
-    print('HANDLE_MENU')
     return 'HANDLE_MENU'
 
 
@@ -324,7 +321,6 @@ def handle_menu(
             caption=reply_text,
             reply_markup=reply_markup
         )
-    print('HANDLE_DESCRIPTION')
     return 'HANDLE_DESCRIPTION'
 
 
@@ -342,15 +338,12 @@ def handle_description(
         if not context.user_data.get('cart_id'):
             create_cart(update=update, context=context, token=token)
             context.user_data['cart_id'] = chat_id
-            # print(f'cart id: {context.user_data["cart_id"]}')
         cart = add_product_to_cart(
             token=token,
             cart_id=chat_id,
             product_id=context.user_data.get('product_id'),
             quantity=query_data
         )
-        # pprint(cart)
-        print('HANDLE_DESCRIPTION')
         return 'HANDLE_DESCRIPTION'
     elif query_data == 'cart':
         cart_items = get_cart_items(cart_id=chat_id, token=token)
@@ -372,14 +365,12 @@ def handle_cart(
     token = context.bot_data.get('moltin_token')
     if query_data == 'back':
         start(update=update, context=context)
-        print('HANDLE_MENU')
         return 'HANDLE_MENU'
     elif query_data == 'pay':
         context.bot.send_message(
             text='Введите ваш e-mail',
             chat_id=chat_id
         )
-        print('WAITING_EMAIL')
         return 'WAITING_EMAIL'
     else:
         cart = delete_cart_item(
@@ -413,7 +404,6 @@ def send_cart_content(
             chat_id=chat_id,
             reply_markup=reply_markup
         )
-        print('HANDLE_CART')
         return 'HANDLE_CART'
     cart_item_texts = list()
     keyboard = list()
@@ -445,7 +435,6 @@ def send_cart_content(
         chat_id=chat_id,
         reply_markup=reply_markup
     )
-    print('HANDLE_CART')
     return 'HANDLE_CART'
 
 
@@ -474,7 +463,6 @@ def handle_email(
             text=f'Вы указали следующий e-mail: {email}',
             chat_id=chat_id,
         )
-        print('START')
         return 'START'
     customer = update_customer(
         token=token,
@@ -484,9 +472,7 @@ def handle_email(
     context.bot.send_message(
         text=f'Вы указали следующий e-mail: {email}',
         chat_id=chat_id,
-        # reply_markup=reply_markup
     )
-    print('START')
     return 'START'
 
 
