@@ -69,7 +69,7 @@ def download_product_main_image(product_id: str, token: str) -> str:
     '''Download product main image.'''
     headers = {'Authorization': f'Bearer {token}'}
     response = requests.get(
-        url= (
+        url=(
             f'https://api.moltin.com/pcm/products/{product_id}'
             f'/relationships/main_image'
         ),
@@ -120,10 +120,10 @@ def add_product_to_cart(
     }
     url = f'https://api.moltin.com/v2/carts/{cart_id}/items'
     payload = {
-        "data": {
-            "id": product_id,
-            "type": "cart_item",
-            "quantity": int(quantity),
+        'data': {
+            'id': product_id,
+            'type': 'cart_item',
+            'quantity': int(quantity),
         }
     }
     response = requests.post(
@@ -178,7 +178,7 @@ def handle_users_reply(
         user_state = 'START'
     else:
         user_state = db.get(chat_id)
-    
+
     states_functions = {
         'START': start,
         'HANDLE_MENU': handle_menu,
@@ -230,7 +230,7 @@ def create_customer(
         }
     }
     response = requests.post(
-        url=f'https://api.moltin.com/v2/customers',
+        url='https://api.moltin.com/v2/customers',
         headers={'Authorization': f'Bearer {token}'},
         json=customer_creds
     )
@@ -261,7 +261,7 @@ def start(update: telegram.update.Update, context: CallbackContext) -> str:
         keyboard.append(
             [InlineKeyboardButton(product_name, callback_data=product['id'])]
         )
-    keyboard.append([InlineKeyboardButton('Корзина',callback_data='cart')])
+    keyboard.append([InlineKeyboardButton('Корзина', callback_data='cart')])
     reply_markup = InlineKeyboardMarkup(keyboard)
     context.bot.send_message(
         text='Please choose:',
@@ -295,7 +295,8 @@ def handle_menu(
     stock = get_product_stock(product_id=product_id, token=token)
     reply_text = (
         f'{product["attributes"]["name"]}\n\n'
-        f'{product["meta"]["display_price"]["without_tax"]["formatted"]} per kg'
+        f'{product["meta"]["display_price"]["without_tax"]["formatted"]}'
+        ' per kg'
         f'\n{stock["available"]} kg on stock'
         f'\n{product["attributes"]["description"]}'
     )
@@ -307,12 +308,12 @@ def handle_menu(
         reply_markup = InlineKeyboardMarkup(
             [
                 [
-                    InlineKeyboardButton('1 kg',callback_data=1),
-                    InlineKeyboardButton('5 kg',callback_data=5),
-                    InlineKeyboardButton('10 kg',callback_data=10)
+                    InlineKeyboardButton('1 kg', callback_data=1),
+                    InlineKeyboardButton('5 kg', callback_data=5),
+                    InlineKeyboardButton('10 kg', callback_data=10)
                 ],
-                [InlineKeyboardButton('Корзина',callback_data='cart')],
-                [InlineKeyboardButton('Назад',callback_data='back')]
+                [InlineKeyboardButton('Корзина', callback_data='cart')],
+                [InlineKeyboardButton('Назад', callback_data='back')]
             ]
         )
         context.bot.send_photo(
@@ -330,7 +331,7 @@ def handle_description(
 ) -> str:
     '''Return to products menu.'''
     query_data = update.callback_query.data
-    chat_id=context.user_data.get('chat_id')
+    chat_id = context.user_data.get('chat_id')
     token = context.bot_data.get('moltin_token')
     if query_data == 'back':
         return start(update=update, context=context)
@@ -338,7 +339,7 @@ def handle_description(
         if not context.user_data.get('cart_id'):
             create_cart(update=update, context=context, token=token)
             context.user_data['cart_id'] = chat_id
-        cart = add_product_to_cart(
+        add_product_to_cart(
             token=token,
             cart_id=chat_id,
             product_id=context.user_data.get('product_id'),
@@ -361,7 +362,7 @@ def handle_cart(
 ) -> str:
     '''Return to products menu.'''
     query_data = update.callback_query.data
-    chat_id=context.user_data.get('chat_id')
+    chat_id = context.user_data.get('chat_id')
     token = context.bot_data.get('moltin_token')
     if query_data == 'back':
         start(update=update, context=context)
@@ -408,10 +409,12 @@ def send_cart_content(
     cart_item_texts = list()
     keyboard = list()
     for cart_item in cart_items['data']:
+        price_without_tax = cart_item['meta']['display_price']['without_tax']
         text = (
             f'\n{cart_item["name"]}\n{cart_item["description"]}'
-            f'\n{cart_item["meta"]["display_price"]["without_tax"]["unit"]["formatted"]} per kg'
-            f'\n{cart_item["quantity"]}kg in cart for {cart_item["meta"]["display_price"]["without_tax"]["value"]["formatted"]}'
+            f'\n{price_without_tax["unit"]["formatted"]} per kg'
+            f'\n{cart_item["quantity"]}kg in cart for '
+            f'{price_without_tax["value"]["formatted"]}'
         )
         cart_item_texts.append(text)
         keyboard.append(
@@ -427,7 +430,8 @@ def send_cart_content(
         [InlineKeyboardButton('В меню', callback_data='back')]
     )
     reply_markup = InlineKeyboardMarkup(keyboard)
-    total_cost = f'\n\nTotal: {cart_items["meta"]["display_price"]["without_tax"]["formatted"]}'
+    cost = cart_items["meta"]["display_price"]["without_tax"]["formatted"]
+    total_cost = f'\n\nTotal: {cost}'
     cart_item_texts.append(total_cost)
     text = '\n'.join(cart_item_texts)
     context.bot.send_message(
