@@ -1,5 +1,6 @@
 import logging
 import os
+from datetime import datetime, timedelta
 from pathlib import Path
 from pprint import pprint
 
@@ -148,10 +149,23 @@ def get_cart_items(cart_id: str, token: str) -> dict:
 def handle_users_reply(
     update: telegram.update.Update,
     context: CallbackContext,
-    token: str,
+    client_id: str,
+    client_secret: str,
     db: redis.Redis
 ) -> None:
     '''State-machine implementation.'''
+    expiration_datetime = context.bot_data.get('expiration_datetime')
+    current_datetime = datetime.now()
+    if not expiration_datetime or current_datetime > expiration_datetime:
+        token, expired_in = get_token(
+            url='https://api.moltin.com/oauth/access_token',
+            client_id=client_id,
+            client_secret=client_secret
+        )
+        context.bot_data['moltin_token'] = token
+        context.bot_data['expiration_datetime'] = current_datetime \
+            + timedelta(expired_in - 100)
+
     if update.message:
         user_reply = update.message.text
         chat_id = context.user_data['chat_id'] = update.message.chat_id
@@ -167,11 +181,11 @@ def handle_users_reply(
         user_state = db.get(chat_id)
     
     states_functions = {
-        'START': partial(start, token=token),
-        'HANDLE_MENU': partial(handle_menu, token=token),
-        'HANDLE_DESCRIPTION': partial(handle_description, token=token),
-        'HANDLE_CART': partial(handle_cart, token=token),
-        'WAITING_EMAIL': partial(handle_email, token=token)
+        'START': start,
+        'HANDLE_MENU': handle_menu,
+        'HANDLE_DESCRIPTION': handle_description,
+        'HANDLE_CART': handle_cart,
+        'WAITING_EMAIL': handle_email,
     }
     state_handler = states_functions[user_state]
     try:
@@ -236,15 +250,11 @@ def update_customer(token: str, customer_id: str, email: str) -> dict:
     return response.json()
 
 
-def start(
-    update: telegram.update.Update,
-    context: CallbackContext,
-    token: str,
-) -> str:
+def start(update: telegram.update.Update, context: CallbackContext) -> str:
     '''Send a message when the command /start is issued.'''
     products = get_all_products(
         url='https://api.moltin.com/pcm/products/',
-        token=token
+        token=context.bot_data.get('moltin_token')
     )
     # context.user_data['cart_id'] = None
     keyboard = list()
@@ -265,11 +275,12 @@ def start(
 
 def handle_menu(
     update: telegram.update.Update,
-    context: CallbackContext,
-    token: str
+    context: CallbackContext
 ) -> str:
+    '''Telegram-bot menu handler.'''
     query = update.callback_query
     chat_id = context.user_data.get('chat_id')
+    token = context.bot_data.get('moltin_token')
     if query.data == 'cart':
         cart_items = get_cart_items(cart_id=chat_id, token=token)
         return send_cart_content(
@@ -319,14 +330,14 @@ def handle_menu(
 
 def handle_description(
     update: telegram.update.Update,
-    context: CallbackContext,
-    token: str
+    context: CallbackContext
 ) -> str:
     '''Return to products menu.'''
     query_data = update.callback_query.data
     chat_id=context.user_data.get('chat_id')
+    token = context.bot_data.get('moltin_token')
     if query_data == 'back':
-        return start(update=update, context=context, token=token)
+        return start(update=update, context=context)
     elif query_data.isdigit():
         if not context.user_data.get('cart_id'):
             create_cart(update=update, context=context, token=token)
@@ -353,14 +364,14 @@ def handle_description(
 
 def handle_cart(
     update: telegram.update.Update,
-    context: CallbackContext,
-    token: str
+    context: CallbackContext
 ) -> str:
     '''Return to products menu.'''
     query_data = update.callback_query.data
     chat_id=context.user_data.get('chat_id')
+    token = context.bot_data.get('moltin_token')
     if query_data == 'back':
-        start(update=update, context=context, token=token)
+        start(update=update, context=context)
         print('HANDLE_MENU')
         return 'HANDLE_MENU'
     elif query_data == 'pay':
@@ -440,12 +451,12 @@ def send_cart_content(
 
 def handle_email(
     update: telegram.update.Update,
-    context: CallbackContext,
-    token: str
+    context: CallbackContext
 ) -> str:
     '''Handle user e-mail.'''
     email = update.message.text
     chat_id = update.message.chat_id
+    token = context.bot_data.get('moltin_token')
     name = (
         f'{update.message.chat.last_name} {update.message.chat.first_name}'
         f' ({chat_id})'
@@ -482,15 +493,12 @@ def handle_email(
 def main() -> None:
     '''Start the Telegram-bot.'''
     load_dotenv()
-    url = os.getenv('MOLTIN_API_URL')
-    store_id = os.getenv('STORE_ID')
     client_id = os.getenv('CLIENT_ID')
     client_secret = os.getenv('CLIENT_SECRET')
     tg_token = os.getenv('TG_TOKEN')
     db_host = os.getenv('DB_HOST', default='localhost')
     db_port = os.getenv('DB_PORT', default=6379)
     db_password = os.getenv('DB_PASSWORD', default=None)
-    token_url = 'https://api.moltin.com/oauth/access_token'
 
     redis_db = redis.Redis(
         host=db_host,
@@ -499,29 +507,38 @@ def main() -> None:
         decode_responses=True
     )
 
-    access_token, expiration_time = get_token(
-        url=token_url,
-        client_id=client_id,
-        client_secret=client_secret
-    )
-
     updater = Updater(tg_token)
     dispatcher = updater.dispatcher
     dispatcher.add_handler(
         CallbackQueryHandler(
-            partial(handle_users_reply, db=redis_db, token=access_token)
+            partial(
+                handle_users_reply,
+                db=redis_db,
+                client_id=client_id,
+                client_secret=client_secret
+            )
         )
     )
     dispatcher.add_handler(
         MessageHandler(
             Filters.text,
-            partial(handle_users_reply, db=redis_db, token=access_token)
+            partial(
+                handle_users_reply,
+                db=redis_db,
+                client_id=client_id,
+                client_secret=client_secret
+            )
         )
     )
     dispatcher.add_handler(
         CommandHandler(
             'start',
-            partial(handle_users_reply, db=redis_db, token=access_token)
+            partial(
+                handle_users_reply,
+                db=redis_db,
+                client_id=client_id,
+                client_secret=client_secret
+            )
         )
     )
     updater.start_polling()
