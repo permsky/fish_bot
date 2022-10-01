@@ -1,7 +1,6 @@
 import logging
 import os
 from datetime import datetime, timedelta
-from pathlib import Path
 
 import redis
 import requests
@@ -65,7 +64,7 @@ def get_product(product_id: str, token: str) -> list[dict]:
     return response.json()['data']
 
 
-def download_product_main_image(product_id: str, token: str) -> str:
+def get_product_main_image(product_id: str, token: str) -> str:
     '''Download product main image.'''
     headers = {'Authorization': f'Bearer {token}'}
     response = requests.get(
@@ -82,14 +81,7 @@ def download_product_main_image(product_id: str, token: str) -> str:
         headers=headers
     )
     response.raise_for_status()
-    main_image = response.json()['data']
-    filepath = Path('images', main_image['file_name'])
-    if not filepath.exists():
-        response = requests.get(main_image['link']['href'])
-        response.raise_for_status()
-        with open(filepath, 'wb') as image_file:
-            image_file.write(response.content)
-    return filepath
+    return response.json()['data']['link']['href']
 
 
 def create_cart(
@@ -288,7 +280,7 @@ def handle_menu(
         )
     product_id = context.user_data['product_id'] = query.data
     product = get_product(product_id=product_id, token=token)
-    main_image_filepath = download_product_main_image(
+    main_image_url = get_product_main_image(
         product_id=product_id,
         token=token
     )
@@ -304,24 +296,23 @@ def handle_menu(
         chat_id=chat_id,
         message_id=query.message.message_id
     )
-    with open(main_image_filepath, 'rb') as image_file:
-        reply_markup = InlineKeyboardMarkup(
+    reply_markup = InlineKeyboardMarkup(
+        [
             [
-                [
-                    InlineKeyboardButton('1 kg', callback_data=1),
-                    InlineKeyboardButton('5 kg', callback_data=5),
-                    InlineKeyboardButton('10 kg', callback_data=10)
-                ],
-                [InlineKeyboardButton('Корзина', callback_data='cart')],
-                [InlineKeyboardButton('Назад', callback_data='back')]
-            ]
-        )
-        context.bot.send_photo(
-            chat_id=chat_id,
-            photo=image_file,
-            caption=reply_text,
-            reply_markup=reply_markup
-        )
+                InlineKeyboardButton('1 kg', callback_data=1),
+                InlineKeyboardButton('5 kg', callback_data=5),
+                InlineKeyboardButton('10 kg', callback_data=10)
+            ],
+            [InlineKeyboardButton('Корзина', callback_data='cart')],
+            [InlineKeyboardButton('Назад', callback_data='back')]
+        ]
+    )
+    context.bot.send_photo(
+        chat_id=chat_id,
+        photo=main_image_url,
+        caption=reply_text,
+        reply_markup=reply_markup
+    )
     return 'HANDLE_DESCRIPTION'
 
 
