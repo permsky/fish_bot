@@ -382,7 +382,6 @@ def handle_cart(
 
 def send_cart_content(
     context: CallbackContext,
-    token: str,
     chat_id: str,
     cart_items: dict
 ) -> str:
@@ -477,7 +476,7 @@ def main() -> None:
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         level=logging.INFO
     )
-    
+
     load_dotenv()
     client_id = os.getenv('CLIENT_ID')
     client_secret = os.getenv('CLIENT_SECRET')
