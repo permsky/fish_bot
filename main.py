@@ -1,6 +1,7 @@
 import logging
 import os
 from datetime import datetime, timedelta
+from textwrap import dedent
 
 import redis
 import requests
@@ -290,13 +291,13 @@ def handle_menu(
         token=token
     )
     stock = get_product_stock(product_id=product_id, token=token)
-    reply_text = (
-        f'{product["attributes"]["name"]}\n\n'
-        f'{product["meta"]["display_price"]["without_tax"]["formatted"]}'
-        ' per kg'
-        f'\n{stock["available"]} kg on stock'
-        f'\n{product["attributes"]["description"]}'
-    )
+    reply_text = f'''\
+    {product["attributes"]["name"]}
+
+    {product["meta"]["display_price"]["without_tax"]["formatted"]} per kg
+    {stock["available"]} kg on stock
+    {product["attributes"]["description"]}
+    '''
     reply_markup = InlineKeyboardMarkup(
         [
             [
@@ -311,7 +312,7 @@ def handle_menu(
     context.bot.send_photo(
         chat_id=chat_id,
         photo=main_image_url,
-        caption=reply_text,
+        caption=dedent(reply_text),
         reply_markup=reply_markup
     )
     context.bot.delete_message(
@@ -416,13 +417,14 @@ def send_cart_content(
     keyboard = list()
     for cart_item in cart_items['data']:
         price_without_tax = cart_item['meta']['display_price']['without_tax']
-        text = (
-            f'\n{cart_item["name"]}\n{cart_item["description"]}'
-            f'\n{price_without_tax["unit"]["formatted"]} per kg'
-            f'\n{cart_item["quantity"]}kg in cart for '
-            f'{price_without_tax["value"]["formatted"]}'
-        )
-        cart_item_texts.append(text)
+        text = f'''\
+        {cart_item["name"]}
+        {cart_item["description"]}
+        {price_without_tax["unit"]["formatted"]} per kg
+        {cart_item["quantity"]}kg in cart for /
+        {price_without_tax["value"]["formatted"]}
+        '''
+        cart_item_texts.append(dedent(text))
         keyboard.append(
             [InlineKeyboardButton(
                 f'Убрать из корзины {cart_item["name"]}',
