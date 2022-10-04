@@ -7,7 +7,6 @@ import redis
 import telegram
 from dotenv import load_dotenv
 from functools import partial
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     CallbackContext,
     CallbackQueryHandler,
@@ -17,6 +16,12 @@ from telegram.ext import (
     Updater
 )
 
+from keyboards import (
+    get_back_to_menu_keyboard,
+    get_cart_keyboard,
+    get_menu_keyboard,
+    get_order_keyboard
+)
 from moltin_handlers import (
     add_product_to_cart,
     create_cart,
@@ -88,18 +93,11 @@ def start(update: telegram.update.Update, context: CallbackContext) -> str:
         url='https://api.moltin.com/pcm/products/',
         token=context.bot_data.get('moltin_token')
     )
-    keyboard = list()
-    for product in products:
-        product_name = product['attributes']['name']
-        keyboard.append(
-            [InlineKeyboardButton(product_name, callback_data=product['id'])]
-        )
-    keyboard.append([InlineKeyboardButton('Корзина', callback_data='cart')])
-    reply_markup = InlineKeyboardMarkup(keyboard)
     context.bot.send_message(
         text='Please choose:',
         chat_id=context.user_data.get('chat_id'),
-        reply_markup=reply_markup)
+        reply_markup=get_menu_keyboard(products)
+    )
     context.bot.delete_message(
         chat_id=context.user_data.get('chat_id'),
         message_id=update.callback_query.message.message_id
@@ -138,22 +136,11 @@ def handle_menu(
     {stock["available"]} kg on stock
     {product["attributes"]["description"]}
     '''
-    reply_markup = InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton('1 kg', callback_data=1),
-                InlineKeyboardButton('5 kg', callback_data=5),
-                InlineKeyboardButton('10 kg', callback_data=10)
-            ],
-            [InlineKeyboardButton('Корзина', callback_data='cart')],
-            [InlineKeyboardButton('Назад', callback_data='back')]
-        ]
-    )
     context.bot.send_photo(
         chat_id=chat_id,
         photo=main_image_url,
         caption=dedent(reply_text),
-        reply_markup=reply_markup
+        reply_markup=get_order_keyboard()
     )
     context.bot.delete_message(
         chat_id=chat_id,
@@ -240,13 +227,10 @@ def send_cart_content(
 ) -> str:
     '''Send cart content to telegram.'''
     if not context.user_data.get('cart_id'):
-        reply_markup = InlineKeyboardMarkup(
-            [[InlineKeyboardButton('В меню', callback_data='back')]]
-        )
         context.bot.send_message(
             text='Корзина пуста',
             chat_id=chat_id,
-            reply_markup=reply_markup
+            reply_markup=get_back_to_menu_keyboard()
         )
         context.bot.delete_message(
             chat_id=chat_id,
@@ -254,7 +238,6 @@ def send_cart_content(
         )
         return 'HANDLE_CART'
     cart_item_texts = list()
-    keyboard = list()
     for cart_item in cart_items['data']:
         price_without_tax = cart_item['meta']['display_price']['without_tax']
         text = f'''\
@@ -265,19 +248,6 @@ def send_cart_content(
         {price_without_tax["value"]["formatted"]}
         '''
         cart_item_texts.append(dedent(text))
-        keyboard.append(
-            [InlineKeyboardButton(
-                f'Убрать из корзины {cart_item["name"]}',
-                callback_data=cart_item['id']
-            )]
-        )
-    keyboard.append(
-        [InlineKeyboardButton('Оплатить', callback_data='pay')]
-    )
-    keyboard.append(
-        [InlineKeyboardButton('В меню', callback_data='back')]
-    )
-    reply_markup = InlineKeyboardMarkup(keyboard)
     cost = cart_items["meta"]["display_price"]["without_tax"]["formatted"]
     total_cost = f'\n\nTotal: {cost}'
     cart_item_texts.append(total_cost)
@@ -285,7 +255,7 @@ def send_cart_content(
     context.bot.send_message(
         text=text,
         chat_id=chat_id,
-        reply_markup=reply_markup
+        reply_markup=get_cart_keyboard(cart_items['data'])
     )
     context.bot.delete_message(
         chat_id=chat_id,
