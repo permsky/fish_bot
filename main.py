@@ -98,10 +98,11 @@ def start(update: telegram.update.Update, context: CallbackContext) -> str:
         chat_id=context.user_data.get('chat_id'),
         reply_markup=get_menu_keyboard(products)
     )
-    context.bot.delete_message(
-        chat_id=context.user_data.get('chat_id'),
-        message_id=update.callback_query.message.message_id
-    )
+    if update.callback_query:
+        context.bot.delete_message(
+            chat_id=context.user_data.get('chat_id'),
+            message_id=update.callback_query.message.message_id
+        )
     return 'HANDLE_MENU'
 
 
@@ -237,12 +238,12 @@ def send_cart_content(
     cart_item_texts = list()
     for cart_item in cart_items['data']:
         price_without_tax = cart_item['meta']['display_price']['without_tax']
+        formatted_price = price_without_tax["value"]["formatted"]
         text = f'''\
         {cart_item["name"]}
         {cart_item["description"]}
         {price_without_tax["unit"]["formatted"]} per kg
-        {cart_item["quantity"]}kg in cart for \
-        {price_without_tax["value"]["formatted"]}
+        {cart_item["quantity"]}kg in cart for {formatted_price}
         '''
         cart_item_texts.append(dedent(text))
     cost = cart_items["meta"]["display_price"]["without_tax"]["formatted"]
@@ -288,7 +289,11 @@ def handle_email(
         )
         context.bot.delete_message(
             chat_id=chat_id,
-            message_id=update.callback_query.message.message_id
+            message_id=update.message.message_id
+        )
+        context.bot.delete_message(
+            chat_id=chat_id,
+            message_id=update.message.message_id - 1
         )
         return 'START'
     customer = update_customer(
