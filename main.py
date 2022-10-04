@@ -241,12 +241,12 @@ def send_cart_content(
         {cart_item["name"]}
         {cart_item["description"]}
         {price_without_tax["unit"]["formatted"]} per kg
-        {cart_item["quantity"]}kg in cart for /
+        {cart_item["quantity"]}kg in cart for \
         {price_without_tax["value"]["formatted"]}
         '''
         cart_item_texts.append(dedent(text))
     cost = cart_items["meta"]["display_price"]["without_tax"]["formatted"]
-    total_cost = f'\n\nTotal: {cost}'
+    total_cost = f'\nTotal: {cost}'
     cart_item_texts.append(total_cost)
     text = '\n'.join(cart_item_texts)
     context.bot.send_message(
