@@ -118,7 +118,6 @@ def handle_menu(
         return send_cart_content(
             update=update,
             context=context,
-            token=token,
             chat_id=chat_id,
             cart_items=cart_items
         )
@@ -175,7 +174,6 @@ def handle_description(
         return send_cart_content(
             update=update,
             context=context,
-            token=token,
             chat_id=chat_id,
             cart_items=cart_items
         )
@@ -213,7 +211,6 @@ def handle_cart(
         return send_cart_content(
             update=update,
             context=context,
-            token=token,
             chat_id=chat_id,
             cart_items=cart
         )
