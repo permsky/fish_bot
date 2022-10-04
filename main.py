@@ -259,6 +259,10 @@ def start(update: telegram.update.Update, context: CallbackContext) -> str:
         text='Please choose:',
         chat_id=context.user_data.get('chat_id'),
         reply_markup=reply_markup)
+    context.bot.delete_message(
+        chat_id=context.user_data.get('chat_id'),
+        message_id=update.callback_query.message.message_id
+    )
     return 'HANDLE_MENU'
 
 
@@ -273,6 +277,7 @@ def handle_menu(
     if query.data == 'cart':
         cart_items = get_cart_items(cart_id=chat_id, token=token)
         return send_cart_content(
+            update=update,
             context=context,
             token=token,
             chat_id=chat_id,
@@ -292,10 +297,6 @@ def handle_menu(
         f'\n{stock["available"]} kg on stock'
         f'\n{product["attributes"]["description"]}'
     )
-    context.bot.delete_message(
-        chat_id=chat_id,
-        message_id=query.message.message_id
-    )
     reply_markup = InlineKeyboardMarkup(
         [
             [
@@ -312,6 +313,10 @@ def handle_menu(
         photo=main_image_url,
         caption=reply_text,
         reply_markup=reply_markup
+    )
+    context.bot.delete_message(
+        chat_id=chat_id,
+        message_id=query.message.message_id
     )
     return 'HANDLE_DESCRIPTION'
 
@@ -340,6 +345,7 @@ def handle_description(
     elif query_data == 'cart':
         cart_items = get_cart_items(cart_id=chat_id, token=token)
         return send_cart_content(
+            update=update,
             context=context,
             token=token,
             chat_id=chat_id,
@@ -363,6 +369,10 @@ def handle_cart(
             text='Введите ваш e-mail',
             chat_id=chat_id
         )
+        context.bot.delete_message(
+            chat_id=chat_id,
+            message_id=update.callback_query.message.message_id
+        )
         return 'WAITING_EMAIL'
     else:
         cart = delete_cart_item(
@@ -373,6 +383,7 @@ def handle_cart(
         if not cart['data']:
             context.user_data['cart_id'] = None
         return send_cart_content(
+            update=update,
             context=context,
             token=token,
             chat_id=chat_id,
@@ -381,6 +392,7 @@ def handle_cart(
 
 
 def send_cart_content(
+    update: telegram.update.Update,
     context: CallbackContext,
     chat_id: str,
     cart_items: dict
@@ -394,6 +406,10 @@ def send_cart_content(
             text='Корзина пуста',
             chat_id=chat_id,
             reply_markup=reply_markup
+        )
+        context.bot.delete_message(
+            chat_id=chat_id,
+            message_id=update.callback_query.message.message_id
         )
         return 'HANDLE_CART'
     cart_item_texts = list()
@@ -429,6 +445,10 @@ def send_cart_content(
         chat_id=chat_id,
         reply_markup=reply_markup
     )
+    context.bot.delete_message(
+        chat_id=chat_id,
+        message_id=update.callback_query.message.message_id
+    )
     return 'HANDLE_CART'
 
 
@@ -457,6 +477,10 @@ def handle_email(
             text=f'Вы указали следующий e-mail: {email}',
             chat_id=chat_id,
         )
+        context.bot.delete_message(
+            chat_id=chat_id,
+            message_id=update.callback_query.message.message_id
+        )
         return 'START'
     customer = update_customer(
         token=token,
@@ -466,6 +490,10 @@ def handle_email(
     context.bot.send_message(
         text=f'Вы указали следующий e-mail: {email}',
         chat_id=chat_id,
+    )
+    context.bot.delete_message(
+        chat_id=chat_id,
+        message_id=update.callback_query.message.message_id
     )
     return 'START'
 
