@@ -36,6 +36,7 @@ from moltin_handlers import (
     update_customer
 )
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -196,10 +197,11 @@ def handle_cart(
         start(update=update, context=context)
         return 'HANDLE_MENU'
     elif query_data == 'pay':
-        context.bot.send_message(
+        message = context.bot.send_message(
             text='Введите ваш e-mail',
             chat_id=chat_id
         )
+        context.chat_data['message_to_delete_id'] = message._id_attrs[0]
         context.bot.delete_message(
             chat_id=chat_id,
             message_id=update.callback_query.message.message_id
@@ -293,11 +295,11 @@ def handle_email(
         )
         context.bot.delete_message(
             chat_id=chat_id,
-            message_id=update.message.message_id
+            message_id=context.chat_data.get('message_to_delete_id')
         )
         context.bot.delete_message(
             chat_id=chat_id,
-            message_id=update.message.message_id - 1
+            message_id=update.message.message_id
         )
         return 'START'
     customer = update_customer(
@@ -311,8 +313,12 @@ def handle_email(
     )
     context.bot.delete_message(
         chat_id=chat_id,
-        message_id=update.callback_query.message.message_id
+        message_id=context.chat_data.get('message_to_delete_id')
     )
+    context.bot.delete_message(
+        chat_id=chat_id,
+        message_id=update.message.message_id
+        )
     return 'START'
 
 
