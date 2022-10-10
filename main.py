@@ -194,7 +194,7 @@ def handle_cart(
     query_data = update.callback_query.data
     token = context.bot_data.get('moltin_token')
     if query_data == 'back':
-        start(update=update, context=context)
+        start(update=update, context=context, chat_id=chat_id)
         return 'HANDLE_MENU'
     elif query_data == 'pay':
         message = context.bot.send_message(
