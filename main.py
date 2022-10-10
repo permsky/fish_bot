@@ -73,11 +73,11 @@ def handle_users_reply(
         user_state = db.get(chat_id)
 
     states_functions = {
-        'START': start,
-        'HANDLE_MENU': handle_menu,
-        'HANDLE_DESCRIPTION': handle_description,
-        'HANDLE_CART': handle_cart,
-        'WAITING_EMAIL': handle_email,
+        'START': partial(start, chat_id=chat_id),
+        'HANDLE_MENU': partial(handle_menu, chat_id=chat_id),
+        'HANDLE_DESCRIPTION': partial(handle_description, chat_id=chat_id),
+        'HANDLE_CART': partial(handle_cart, chat_id=chat_id),
+        'WAITING_EMAIL': partial(handle_email, chat_id=chat_id),
     }
     state_handler = states_functions[user_state]
     try:
@@ -87,7 +87,11 @@ def handle_users_reply(
         print(err)
 
 
-def start(update: telegram.update.Update, context: CallbackContext) -> str:
+def start(
+    update: telegram.update.Update,
+    context: CallbackContext,
+    chat_id: str
+) -> str:
     '''Send a message when the command /start is issued.'''
     products = get_all_products(
         url='https://api.moltin.com/pcm/products/',
@@ -95,12 +99,12 @@ def start(update: telegram.update.Update, context: CallbackContext) -> str:
     )
     context.bot.send_message(
         text='Please choose:',
-        chat_id=context.user_data.get('chat_id'),
+        chat_id=chat_id,
         reply_markup=get_menu_keyboard(products)
     )
     if update.callback_query:
         context.bot.delete_message(
-            chat_id=context.user_data.get('chat_id'),
+            chat_id=chat_id,
             message_id=update.callback_query.message.message_id
         )
     return 'HANDLE_MENU'
@@ -108,11 +112,11 @@ def start(update: telegram.update.Update, context: CallbackContext) -> str:
 
 def handle_menu(
     update: telegram.update.Update,
-    context: CallbackContext
+    context: CallbackContext,
+    chat_id: str
 ) -> str:
     '''Telegram-bot menu handler.'''
     query = update.callback_query
-    chat_id = context.user_data.get('chat_id')
     token = context.bot_data.get('moltin_token')
     if query.data == 'cart':
         cart_items = get_cart_items(cart_id=chat_id, token=token)
@@ -151,11 +155,11 @@ def handle_menu(
 
 def handle_description(
     update: telegram.update.Update,
-    context: CallbackContext
+    context: CallbackContext,
+    chat_id: str
 ) -> str:
     '''Return to products menu.'''
     query_data = update.callback_query.data
-    chat_id = context.user_data.get('chat_id')
     token = context.bot_data.get('moltin_token')
     if query_data == 'back':
         return start(update=update, context=context)
@@ -182,11 +186,11 @@ def handle_description(
 
 def handle_cart(
     update: telegram.update.Update,
-    context: CallbackContext
+    context: CallbackContext,
+    chat_id: str
 ) -> str:
     '''Return to products menu.'''
     query_data = update.callback_query.data
-    chat_id = context.user_data.get('chat_id')
     token = context.bot_data.get('moltin_token')
     if query_data == 'back':
         start(update=update, context=context)
@@ -264,11 +268,11 @@ def send_cart_content(
 
 def handle_email(
     update: telegram.update.Update,
-    context: CallbackContext
+    context: CallbackContext,
+    chat_id: str
 ) -> str:
     '''Handle user e-mail.'''
     email = update.message.text
-    chat_id = update.message.chat_id
     token = context.bot_data.get('moltin_token')
     name = (
         f'{update.message.chat.last_name} {update.message.chat.first_name}'
