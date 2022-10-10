@@ -163,7 +163,7 @@ def handle_description(
     query_data = update.callback_query.data
     token = context.bot_data.get('moltin_token')
     if query_data == 'back':
-        return start(update=update, context=context)
+        return start(update=update, context=context, chat_id=chat_id)
     elif query_data.isdigit():
         if not context.user_data.get('cart_id'):
             create_cart(chat_id=chat_id, token=token)
